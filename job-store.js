@@ -1,11 +1,13 @@
 import { Redis } from "ioredis";
+import { postgresStore } from "./postgres-store.js";
 
 const RETENTION_SECONDS = 86400;
 const LEASE_MS = 32000;
 
 export class StorageError extends Error {}
 
-export function redisStore(slug, env) {
+export function jobStore(slug, env) {
+  if (env.PULLDATA_RESULTS_DATABASE_URL) return postgresStore(slug, env, StorageError);
   const url = env.SCRAPER_QUEUE_REDIS_URL || env.REDIS_URL;
   const prefix = `marketplace:worker:${env.SCRAPER_QUEUE_NAMESPACE || "local"}:${slug}`;
   const key = (id) => `${prefix}:${id}`;

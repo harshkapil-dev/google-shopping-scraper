@@ -1,7 +1,7 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import express from "express";
-import { redisStore, StorageError } from "./job-store.js";
+import { jobStore, StorageError } from "./job-store.js";
 import { collect, parseInput, sourceReady } from "./source.js";
 import { WorkerError } from "./upstream.js";
 
@@ -65,7 +65,7 @@ function pageParameter(value, fallback, min, max) {
   return Number(value);
 }
 
-export function createWorker({ env = process.env, store = redisStore(slug, env), fetcher = fetch } = {}) {
+export function createWorker({ env = process.env, store = jobStore(slug, env), fetcher = fetch } = {}) {
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "16kb" }));
