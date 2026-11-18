@@ -12,6 +12,7 @@ const maxActive = 2;
 const activeStatus = new Set(["queued", "running"]);
 const platformFields = new Set([
   "source", "run_id", "request_id", "user_id", "queue_namespace", "callback_url",
+  "limit", "searchQueries", "search_queries",
   "effective_max_total_results", "affordable_rows_at_start", "affordable_rows_at_dispatch",
   "available_credits_at_start", "wallet_balance_cents_at_start", "wallet_balance_cents_at_dispatch",
   "wallet_reserved_cents_at_start", "wallet_reserved_cents_at_dispatch",

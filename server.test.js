@@ -101,7 +101,15 @@ test("health, readiness, authentication, sync and paginated async routes", async
   assert.equal(sync.body.total, 3);
   validateRows(sync.body.results);
 
-  const request = { ...smoke, run_id: "repeatable-test", effective_max_total_results: 2 };
+  const request = {
+    ...smoke,
+    run_id: "repeatable-test",
+    source: "marketplace-ui",
+    limit: 20,
+    searchQueries: [smoke.query],
+    search_queries: [smoke.query],
+    effective_max_total_results: 2,
+  };
   const started = await call("/scrape", request);
   assert.equal(started.body.status, "queued");
   const url = `/job/${started.body.job_id}`;
