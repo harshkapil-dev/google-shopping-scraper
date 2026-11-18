@@ -1,0 +1,68 @@
+{
+  "columns": [
+    {
+      "key": "position",
+      "label": "Result position",
+      "type": "integer"
+    },
+    {
+      "key": "product_id",
+      "label": "Google product ID",
+      "type": "string"
+    },
+    {
+      "key": "title",
+      "label": "Product title",
+      "type": "string"
+    },
+    {
+      "key": "merchant",
+      "label": "Merchant",
+      "type": "string"
+    },
+    {
+      "key": "price",
+      "label": "Price",
+      "type": "number"
+    },
+    {
+      "key": "currency",
+      "label": "Currency",
+      "type": "string"
+    },
+    {
+      "key": "rating",
+      "label": "Rating",
+      "type": "number"
+    },
+    {
+      "key": "reviews",
+      "label": "Review count",
+      "type": "integer"
+    },
+    {
+      "key": "seller_url",
+      "label": "Merchant product URL",
+      "type": "url"
+    },
+    {
+      "key": "shopping_url",
+      "label": "Google Shopping URL",
+      "type": "url"
+    },
+    {
+      "key": "image_url",
+      "label": "Product image URL",
+      "type": "url"
+    },
+    {
+      "key": "sponsored",
+      "label": "Sponsored",
+      "type": "boolean"
+    }
+  ],
+  "exportFormats": [
+    "CSV",
+    "JSON"
+  ]
+}

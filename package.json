@@ -1,0 +1,17 @@
+{
+  "name": "google-shopping-scraper",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "NODE_ENV=test node --test"
+  },
+  "dependencies": {
+    "express": "5.3.0",
+    "ioredis": "6.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "version": "1.0.0"
+}

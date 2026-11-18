@@ -1,0 +1,38 @@
+{
+  "manifestVersion": "1.0",
+  "slug": "google-shopping-scraper",
+  "name": "Google Shopping",
+  "sourceType": "COMMUNITY_HOSTED",
+  "runtime": "node",
+  "pipeline": {
+    "installCommand": "npm ci --no-audit --no-fund",
+    "testCommand": "npm test",
+    "dockerfile": "Dockerfile",
+    "configSchema": "pulldata.config.schema.json",
+    "inputSchema": "pulldata.input.json",
+    "outputSchema": "pulldata.output.schema.json",
+    "envSchema": "pulldata.env.schema.json"
+  },
+  "server": {
+    "port": 8080,
+    "healthPath": "/health",
+    "readyPath": "/ready",
+    "startPath": "/scrape",
+    "syncPath": "/scrape-sync",
+    "statusPath": "/job/{job_id}",
+    "resultsPath": "/job/{job_id}/results"
+  },
+  "pricing": {
+    "ratePer1000ResultsUsd": 1
+  },
+  "smokeTest": {
+    "input": {
+      "query": "stainless steel water bottle",
+      "country": "US",
+      "language": "en",
+      "max_total_results": 3
+    },
+    "expectedMinRows": 1,
+    "timeoutSeconds": 150
+  }
+}
