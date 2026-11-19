@@ -114,9 +114,9 @@ test("tries the private browser directly before a proxied retry", async () => {
   });
   assert.equal(rows.length, smoke.max_total_results);
   assert.equal(requests.length, 2);
-  assert.equal(requests[0].maxTier, 2);
+  assert.equal(requests[0].maxTier, 3);
   assert.equal("proxy" in requests[0], false);
-  assert.equal(requests[1].maxTier, 3);
+  assert.equal(requests[1].maxTier, 4);
   assert.match(requests[1].proxy, /^http:\/\/test-user:test-password@proxy\.example\.com:8080\/?$/);
 });
 

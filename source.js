@@ -137,7 +137,7 @@ export async function requestBrowser(url, { env, fetcher, signal, checkpoint, in
       response = await fetcher(`${base}/scrape`, {
         method: "POST", redirect: "error", signal: requestSignal,
         headers: { "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify({ url, skipHttp: true, maxTier: attempt === 0 ? 2 : 3,
+        body: JSON.stringify({ url, skipHttp: true, maxTier: attempt === 0 ? 3 : 4,
           maxTimeout: 28_000, ...(attempt === 1 && browserProxy && { proxy: browserProxy }) }),
       });
     } catch {
