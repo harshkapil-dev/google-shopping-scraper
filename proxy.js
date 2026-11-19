@@ -1,7 +1,7 @@
 import { fetch as undiciFetch, ProxyAgent } from "undici";
 import { WorkerError } from "./upstream.js";
 
-export function proxyUrl(env) {
+export function proxyUrl(env, country) {
   const { WEBSHARE_PROXY_DOMAIN: host, WEBSHARE_PROXY_PORT: port,
     WEBSHARE_PROXY_USERNAME: user, WEBSHARE_PROXY_PASSWORD: password } = env;
   if (![host, port, user, password].some(Boolean)) return null;
@@ -11,13 +11,17 @@ export function proxyUrl(env) {
     throw new WorkerError(503, "The Shopping proxy is not configured correctly");
   }
   const url = new URL(`http://${host}:${port}`);
-  url.username = user;
+  const target = typeof country === "string" ? country.toLowerCase() : null;
+  const rotatedUser = target && /^[a-z]{2}$/.test(target) && /-rotate$/i.test(user) &&
+    !/-(?:city_|state_|postalcode_|asn_)/i.test(user)
+    ? user.replace(/(?:-[a-z]{2})?-rotate$/i, `-${target}-rotate`) : user;
+  url.username = rotatedUser;
   url.password = password;
   return url.href;
 }
 
-export function proxyClient(env) {
-  const url = proxyUrl(env);
+export function proxyClient(env, country) {
+  const url = proxyUrl(env, country);
   if (!url) return null;
   const dispatcher = new ProxyAgent(url);
   return {

@@ -127,7 +127,7 @@ async function boundedText(response, max) {
 
 export async function requestBrowser(url, { env, fetcher, signal, checkpoint, input }) {
   const base = privateTrawlUrl(env.GOOGLE_SHOPPING_TRAWL_BASE_URL);
-  const browserProxy = proxyUrl(env);
+  const browserProxy = proxyUrl(env, input.country);
   for (let attempt = 0; attempt < 2; attempt++) {
     // A fresh browser may need time to render the first page on a cold start.
     await checkpoint({});
@@ -198,7 +198,7 @@ export async function collect(input, { env, fetcher = fetch, signal, checkpoint 
   const url = searchUrl(input.query, input);
   const direct = await directHtml(url, input, fetcher, signal);
   if (direct) return direct;
-  const proxy = proxyClient(env);
+  const proxy = proxyClient(env, input.country);
   try {
     if (proxy) {
       await checkpoint({});

@@ -120,6 +120,16 @@ test("tries the private browser directly before a proxied retry", async () => {
   assert.match(requests[1].proxy, /^http:\/\/test-user:test-password@proxy\.example\.com:8080\/?$/);
 });
 
+test("selects the requested country for rotating residential proxies", async () => {
+  const { proxyUrl } = await import("./proxy.js");
+  const env = { WEBSHARE_PROXY_DOMAIN: "p.webshare.io", WEBSHARE_PROXY_PORT: "80",
+    WEBSHARE_PROXY_USERNAME: "example-rotate", WEBSHARE_PROXY_PASSWORD: "placeholder" };
+  const selected = new URL(proxyUrl(env, "US"));
+  assert.equal(decodeURIComponent(selected.username), "example-us-rotate");
+  assert.equal(new URL(proxyUrl(env, "GB")).username, "example-gb-rotate");
+  assert.equal(new URL(proxyUrl(env)).username, "example-rotate");
+});
+
 function validateRows(rows) {
   const keys = output.columns.map((column) => column.key).sort();
   for (const row of rows) {
