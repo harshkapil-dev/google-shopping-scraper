@@ -129,16 +129,17 @@ export async function requestBrowser(url, { env, fetcher, signal, checkpoint, in
   const base = privateTrawlUrl(env.GOOGLE_SHOPPING_TRAWL_BASE_URL);
   const browserProxy = proxyUrl(env);
   for (let attempt = 0; attempt < 2; attempt++) {
-    // Each browser attempt may take up to 35 seconds.
+    // A fresh browser may need time to render the first page on a cold start.
     await checkpoint({});
-    const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(35_000)]);
+    const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(attempt === 0 ? 65_000 : 40_000)]);
     let response;
     try {
       response = await fetcher(`${base}/scrape`, {
         method: "POST", redirect: "error", signal: requestSignal,
         headers: { "content-type": "application/json", accept: "application/json" },
         body: JSON.stringify({ url, skipHttp: true, maxTier: attempt === 0 ? 3 : 4,
-          maxTimeout: 28_000, ...(attempt === 1 && browserProxy && { proxy: browserProxy }) }),
+          maxTimeout: attempt === 0 ? 60_000 : 35_000,
+          ...(attempt === 1 && browserProxy && { proxy: browserProxy }) }),
       });
     } catch {
       signal.throwIfAborted();

@@ -1,6 +1,6 @@
 import pg from "pg";
 
-const lease = "interval '45 seconds'";
+const lease = "interval '80 seconds'";
 const retention = "interval '24 hours'";
 
 export function postgresStore(slug, env, StorageError) {
