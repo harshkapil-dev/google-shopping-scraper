@@ -2,7 +2,7 @@ import { Redis } from "ioredis";
 import { postgresStore } from "./postgres-store.js";
 
 const RETENTION_SECONDS = 86400;
-const LEASE_MS = 32000;
+const LEASE_MS = 45_000;
 
 export class StorageError extends Error {}
 

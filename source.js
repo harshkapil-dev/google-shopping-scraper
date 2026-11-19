@@ -125,17 +125,20 @@ async function boundedText(response, max) {
   } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
 }
 
-async function requestBrowser(url, env, fetcher, signal) {
+export async function requestBrowser(url, { env, fetcher, signal, checkpoint, input }) {
   const base = privateTrawlUrl(env.GOOGLE_SHOPPING_TRAWL_BASE_URL);
+  const browserProxy = proxyUrl(env);
   for (let attempt = 0; attempt < 2; attempt++) {
+    // Each browser attempt may take up to 35 seconds.
+    await checkpoint({});
     const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(35_000)]);
     let response;
     try {
       response = await fetcher(`${base}/scrape`, {
         method: "POST", redirect: "error", signal: requestSignal,
         headers: { "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify({ url, skipHttp: true, maxTier: 3, omitRawBody: true, maxTimeout: 28_000,
-          ...(proxyUrl(env) && { proxy: proxyUrl(env) }) }),
+        body: JSON.stringify({ url, skipHttp: true, maxTier: attempt === 0 ? 2 : 3,
+          maxTimeout: 28_000, ...(attempt === 1 && browserProxy && { proxy: browserProxy }) }),
       });
     } catch {
       signal.throwIfAborted();
@@ -144,7 +147,7 @@ async function requestBrowser(url, env, fetcher, signal) {
       await wait(500 + randomInt(200), undefined, { signal });
       continue;
     }
-    if (response.status === 503 && attempt === 0) {
+    if ((response.status === 429 || response.status >= 500) && attempt === 0) {
       await response.body?.cancel().catch(() => {});
       await wait(500 + randomInt(200), undefined, { signal });
       continue;
@@ -159,9 +162,15 @@ async function requestBrowser(url, env, fetcher, signal) {
     let landed;
     try { landed = new URL(data.url); } catch { throw new WorkerError(502, "The Shopping browser returned invalid data"); }
     if (landed.origin !== google || landed.pathname !== "/search" || data.statusCode !== 200 || typeof data.html !== "string") {
+      if (attempt === 0) continue;
       throw new WorkerError(502, "The Shopping browser did not reach Google results");
     }
-    return data.html;
+    try { return parseShoppingHtml(data.html, input); }
+    catch (error) {
+      if (attempt === 0 && error instanceof WorkerError &&
+          error.message === "Google Shopping did not provide product listings") continue;
+      throw error;
+    }
   }
 }
 
@@ -184,16 +193,17 @@ async function directHtml(url, input, fetcher, signal) {
   return null;
 }
 
-export async function collect(input, { env, fetcher = fetch, signal }) {
+export async function collect(input, { env, fetcher = fetch, signal, checkpoint }) {
   const url = searchUrl(input.query, input);
   const direct = await directHtml(url, input, fetcher, signal);
   if (direct) return direct;
   const proxy = proxyClient(env);
   try {
     if (proxy) {
+      await checkpoint({});
       const proxied = await directHtml(url, input, proxy.fetcher, signal);
       if (proxied) return proxied;
     }
-    return parseShoppingHtml(await requestBrowser(url, env, fetcher, signal), input);
+    return await requestBrowser(url, { env, fetcher, signal, checkpoint, input });
   } finally { await proxy?.close(); }
 }

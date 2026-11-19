@@ -3,8 +3,7 @@ import { readFileSync } from "node:fs";
 import { after, before, test } from "node:test";
 import { setTimeout as wait } from "node:timers/promises";
 import { createWorker } from "./server.js";
-import { parseInput } from "./source.js";
-import { parseShoppingHtml, privateTrawlUrl } from "./source.js";
+import { collect, parseInput, parseShoppingHtml, privateTrawlUrl, requestBrowser } from "./source.js";
 import { requestJson } from "./upstream.js";
 import { createFixture } from "./source.fixture.js";
 
@@ -74,6 +73,52 @@ async function finished(id) {
   }
   assert.fail("Job did not finish");
 }
+
+test("refreshes the job lease before each browser attempt", async () => {
+  const browser = createFixture();
+  const events = [];
+  const results = await collect(parseInput(smoke), {
+    env: browser.env,
+    signal: new AbortController().signal,
+    checkpoint: async () => { events.push("checkpoint"); },
+    fetcher: async (url, options) => {
+      if (url.startsWith(browser.env.GOOGLE_SHOPPING_TRAWL_BASE_URL)) {
+        const retry = events.includes("browser");
+        events.push("browser");
+        if (!retry) return new Response(null, { status: 503 });
+      }
+      return browser.fetcher(url, options);
+    },
+  });
+  assert.deepEqual(events, ["checkpoint", "browser", "checkpoint", "browser"]);
+  assert.equal(results.length, smoke.max_total_results);
+});
+
+test("tries the private browser directly before a proxied retry", async () => {
+  const browser = createFixture();
+  const requests = [];
+  const input = parseInput(smoke);
+  const env = { ...browser.env, WEBSHARE_PROXY_DOMAIN: "proxy.example.com",
+    WEBSHARE_PROXY_PORT: "8080", WEBSHARE_PROXY_USERNAME: "test-user",
+    WEBSHARE_PROXY_PASSWORD: "test-password" };
+  const rows = await requestBrowser("https://www.google.com/search?udm=28&q=water+bottle", {
+    env, input, signal: new AbortController().signal, checkpoint: async () => {},
+    fetcher: async (url, options) => {
+      const body = JSON.parse(options.body);
+      requests.push(body);
+      if (requests.length === 1) return Response.json({
+        url: "https://www.google.com/sorry/index", statusCode: 200, html: "<html></html>",
+      });
+      return browser.fetcher(url, options);
+    },
+  });
+  assert.equal(rows.length, smoke.max_total_results);
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].maxTier, 2);
+  assert.equal("proxy" in requests[0], false);
+  assert.equal(requests[1].maxTier, 3);
+  assert.match(requests[1].proxy, /^http:\/\/test-user:test-password@proxy\.example\.com:8080\/?$/);
+});
 
 function validateRows(rows) {
   const keys = output.columns.map((column) => column.key).sort();
