@@ -4,6 +4,7 @@ import { after, before, test } from "node:test";
 import { setTimeout as wait } from "node:timers/promises";
 import { createWorker } from "./server.js";
 import { parseInput } from "./source.js";
+import { parseShoppingHtml, privateTrawlUrl } from "./source.js";
 import { requestJson } from "./upstream.js";
 import { createFixture } from "./source.fixture.js";
 
@@ -149,12 +150,27 @@ test("empty results are successful and upstream errors are safe", async () => {
   const empty = await call("/scrape-sync", { ...smoke, query: "missing.example" });
   assert.deepEqual(empty, { code: 200, body: { status: "done", total: 0, results: [] } });
   const error = await call("/scrape-sync", { ...smoke, query: "denied.example" });
-  assert.deepEqual(error, { code: 502, body: { error: "The upstream denied access" } });
+  assert.deepEqual(error, { code: 502, body: { error: "The Shopping browser could not retrieve public results" } });
 
   const failed = await call("/scrape", { ...smoke, query: "denied.example" });
   assert.deepEqual(await finished(failed.body.job_id), {
-    job_id: failed.body.job_id, status: "failed", total: 0, error: "The upstream denied access",
+    job_id: failed.body.job_id, status: "failed", total: 0, error: "The Shopping browser could not retrieve public results",
   });
+});
+
+test("parses direct product cards, deduplicates, and rejects public browser endpoints", () => {
+  const html = `<html><body><g-inner-card><div class="gkQHve">Coffee Mug</div>
+    <div aria-label="Current Price: $12.50"></div><span class="WJMUdc">Store</span></g-inner-card>
+    <g-inner-card><div class="gkQHve">Coffee Mug</div>
+    <div aria-label="Current Price: $12.50"></div><span class="WJMUdc">Store</span></g-inner-card></body></html>`;
+  const rows = parseShoppingHtml(html, parseInput(smoke));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].price, 12.5);
+  assert.equal(rows[0].currency, "USD");
+  assert.equal(rows[0].product_id, null);
+  assert.equal(rows[0].sponsored, null);
+  assert.equal(privateTrawlUrl("http://trawl-serp-dev.railway.internal:8191"), "http://trawl-serp-dev.railway.internal:8191");
+  assert.throws(() => privateTrawlUrl("https://public.example"), { status: 503 });
 });
 
 test("bounds rate limit retries, propagates job timeout, and never exposes response text", async () => {
