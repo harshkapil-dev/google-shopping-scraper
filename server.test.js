@@ -106,28 +106,86 @@ test("tries the private browser directly before a proxied retry", async () => {
     fetcher: async (url, options) => {
       const body = JSON.parse(options.body);
       requests.push(body);
-      if (requests.length === 1) return Response.json({
-        url: "https://www.google.com/sorry/index", statusCode: 200, html: "<html></html>",
-      });
+      if (requests.length === 1) return new Response(null, { status: 502 });
       return browser.fetcher(url, options);
     },
   });
   assert.equal(rows.length, smoke.max_total_results);
   assert.equal(requests.length, 2);
   assert.equal(requests[0].maxTier, 3);
+  assert.equal(requests[0].omitRawBody, true);
+  assert.equal(requests[0].settleTimeout, 2000);
   assert.equal("proxy" in requests[0], false);
-  assert.equal(requests[1].maxTier, 4);
+  assert.equal(requests[1].maxTier, 3);
+  assert.equal(requests[1].omitRawBody, true);
   assert.match(requests[1].proxy, /^http:\/\/test-user:test-password@proxy\.example\.com:8080\/?$/);
 });
 
-test("selects the requested country for rotating residential proxies", async () => {
-  const { proxyUrl } = await import("./proxy.js");
+test("selects the requested country for rotating residential proxies and supports opting out", async () => {
+  const { proxyCandidates, proxyUrl } = await import("./proxy.js");
   const env = { WEBSHARE_PROXY_DOMAIN: "p.webshare.io", WEBSHARE_PROXY_PORT: "80",
     WEBSHARE_PROXY_USERNAME: "example-rotate", WEBSHARE_PROXY_PASSWORD: "placeholder" };
   const selected = new URL(proxyUrl(env, "US"));
   assert.equal(decodeURIComponent(selected.username), "example-us-rotate");
   assert.equal(new URL(proxyUrl(env, "GB")).username, "example-gb-rotate");
   assert.equal(new URL(proxyUrl(env)).username, "example-rotate");
+  assert.deepEqual(
+    proxyCandidates(env, "US").map((u) => new URL(u).username),
+    ["example-us-rotate", "example-rotate"],
+  );
+  const optOut = { ...env, WEBSHARE_PROXY_COUNTRY_TARGETING: "false" };
+  assert.equal(new URL(proxyUrl(optOut, "US")).username, "example-rotate");
+  assert.deepEqual(proxyCandidates(optOut, "US").map((u) => new URL(u).username), ["example-rotate"]);
+});
+
+test("falls back from country-suffixed proxy to base proxy, accepts regional Google origins, and surfaces 503 on challenge", async () => {
+  const browser = createFixture();
+  const requests = [];
+  const env = { ...browser.env, WEBSHARE_PROXY_DOMAIN: "p.webshare.io",
+    WEBSHARE_PROXY_PORT: "80", WEBSHARE_PROXY_USERNAME: "example-rotate",
+    WEBSHARE_PROXY_PASSWORD: "placeholder" };
+  const ukInput = parseInput({ query: "water bottle", country: "GB", language: "en", max_total_results: 2 });
+  const rows = await requestBrowser("https://www.google.com/search?udm=28&q=water+bottle&gl=gb", {
+    env, input: ukInput, signal: new AbortController().signal, checkpoint: async () => {},
+    fetcher: async (url, options) => {
+      const body = JSON.parse(options.body);
+      requests.push(body);
+      if (requests.length === 1) throw Object.assign(new Error("timed out"), { name: "TimeoutError" });
+      if (requests.length === 2) return new Response(null, { status: 502 });
+      const res = await browser.fetcher(url, options);
+      const data = await res.json();
+      return Response.json({ ...data, url: "https://www.google.co.uk/search?udm=28&q=water+bottle" });
+    },
+  });
+  assert.equal(rows.length, 2);
+  assert.equal(requests.length, 3);
+  assert.equal("proxy" in requests[0], false);
+  assert.equal(new URL(requests[1].proxy).username, "example-gb-rotate");
+  assert.equal(new URL(requests[2].proxy).username, "example-rotate");
+
+  let challengeCalls = 0;
+  await assert.rejects(
+    requestBrowser("https://www.google.com/search?udm=28&q=water+bottle", {
+      env, input: ukInput, signal: new AbortController().signal, checkpoint: async () => {},
+      fetcher: async () => {
+        challengeCalls += 1;
+        return Response.json({
+          url: "https://www.google.com/sorry/index", statusCode: 200, html: "<html>Our systems have detected unusual traffic</html>",
+        });
+      },
+    }),
+    { status: 503, message: /traffic challenge/i },
+  );
+  assert.equal(challengeCalls, 1);
+  let directCalls = 0;
+  await assert.rejects(collect(ukInput, {
+    env, signal: new AbortController().signal, checkpoint: async () => {},
+    fetcher: async () => {
+      directCalls += 1;
+      return new Response("<html>Our systems have detected unusual traffic</html>");
+    },
+  }), { status: 503, message: /traffic challenge/i });
+  assert.equal(directCalls, 1);
 });
 
 function validateRows(rows) {
@@ -213,7 +271,7 @@ test("empty results are successful and upstream errors are safe", async () => {
   });
 });
 
-test("parses direct product cards, deduplicates, and rejects public browser endpoints", () => {
+test("parses direct and alternate product cards, European prices, redirects, deduplicates, and rejects public browser endpoints", () => {
   const html = `<html><body><g-inner-card><div class="gkQHve">Coffee Mug</div>
     <div aria-label="Current Price: $12.50"></div><span class="WJMUdc">Store</span></g-inner-card>
     <g-inner-card><div class="gkQHve">Coffee Mug</div>
@@ -224,6 +282,25 @@ test("parses direct product cards, deduplicates, and rejects public browser endp
   assert.equal(rows[0].currency, "USD");
   assert.equal(rows[0].product_id, null);
   assert.equal(rows[0].sponsored, null);
+
+  const euHtml = `<html><body><div class="sh-dgr__grid-result" data-docid="eu-1">
+    <h3 class="tAxDx">Thermal Flask</h3>
+    <div class="aULzUe">Berlin Shop</div>
+    <span class="a8Pemb">24,95 €</span>
+    <span aria-label="Rated 4.7 out of 5 stars. 142 reviews"></span>
+    <a href="/url?q=https%3A%2F%2Fberlinshop.example%2Fflask">Visit</a>
+    <img src="https://berlinshop.example/img.jpg">
+  </div></body></html>`;
+  const euRows = parseShoppingHtml(euHtml, parseInput({ query: "flask", country: "DE", language: "de", max_total_results: 5 }));
+  assert.equal(euRows.length, 1);
+  assert.equal(euRows[0].product_id, "eu-1");
+  assert.equal(euRows[0].price, 24.95);
+  assert.equal(euRows[0].currency, "EUR");
+  assert.equal(euRows[0].rating, 4.7);
+  assert.equal(euRows[0].reviews, 142);
+  assert.equal(euRows[0].seller_url, "https://berlinshop.example/flask");
+  assert.equal(euRows[0].image_url, "https://berlinshop.example/img.jpg");
+
   assert.equal(privateTrawlUrl("http://trawl-serp-dev.railway.internal:8191"), "http://trawl-serp-dev.railway.internal:8191");
   assert.throws(() => privateTrawlUrl("https://public.example"), { status: 503 });
 });
